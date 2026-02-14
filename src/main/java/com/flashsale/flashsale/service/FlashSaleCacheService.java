@@ -11,6 +11,7 @@ import com.flashsale.flashsale.repository.ProductRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -56,6 +57,7 @@ public class FlashSaleCacheService {
      * Queries DB once, serializes to JSON, stores in Redis with 60s TTL.
      */
     @Scheduled(fixedRate = 30_000)
+    @SchedulerLock(name = "refreshFlashSaleCache", lockAtMostFor = "PT25S", lockAtLeastFor = "PT10S")
     public void refreshCache() {
         try {
             LocalDateTime now = LocalDateTime.now();
