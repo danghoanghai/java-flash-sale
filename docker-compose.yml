@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   mysql:
     image: mysql:8.0
@@ -36,13 +34,33 @@ services:
       timeout: 3s
       retries: 10
 
-  app:
+  api:
     build:
       context: .
-      dockerfile: Dockerfile
-    container_name: fs-app
+      dockerfile: flash-sale-api/Dockerfile
+    container_name: fs-api
     ports:
       - "8080:8080"
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DB: flash_sale
+      MYSQL_USER: root
+      MYSQL_PASSWORD: root123
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: on-failure
+
+  worker:
+    build:
+      context: .
+      dockerfile: flash-sale-worker/Dockerfile
+    container_name: fs-worker
     environment:
       MYSQL_HOST: mysql
       MYSQL_PORT: 3306

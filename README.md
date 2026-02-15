@@ -1,6 +1,24 @@
 # Flash Sale System
 
-High-performance flash sale backend — Spring Boot 3, Java 21, Redis Lua scripting, async persistence.
+High-performance flash sale backend — Spring Boot 3, Java 21, Redis Lua scripting, async persistence, multi-module architecture.
+
+## Project Structure
+
+```
+java-flash-sale/                          (parent pom)
+├── flash-sale-common/                    (shared JAR)
+│   └── entities, repositories, configs, FlashSaleCacheService
+├── flash-sale-api/                       (Spring Boot web app)
+│   └── controllers, auth, services, Lua script
+└── flash-sale-worker/                    (Spring Boot non-web app)
+    └── scheduled cache refresh every 30s
+```
+
+| Module | Type | Description |
+|--------|------|-------------|
+| `flash-sale-common` | JAR (library) | Entities, repositories, Redis/Jackson config, `FlashSaleCacheService` |
+| `flash-sale-api` | Spring Boot (web) | REST API, JWT auth, purchase flow, async order persistence |
+| `flash-sale-worker` | Spring Boot (non-web) | Background job: refreshes Redis cache every 30s |
 
 ## Key Features
 
@@ -8,10 +26,10 @@ High-performance flash sale backend — Spring Boot 3, Java 21, Redis Lua script
 - **Atomic Purchase via Redis Lua** — time window, daily limit, stock check, decrement all in 1 atomic script. Zero DB on hot path
 - **Normalized DB Design** — `products`, `flash_sale`, `flash_sale_product` (allocated stock per campaign), `inventory` (global stock), `orders`
 - **Async Order Persistence** — Spring ApplicationEvent + dedicated thread pool, optimistic locking with retry
-- **Redis Cache Layer** — background job refreshes active items every 30s. `GET /items` = zero DB queries
+- **Redis Cache Layer** — worker refreshes active items every 30s. `GET /items` = zero DB queries
+- **Independent Worker** — cache refresh runs as separate service, independently deployable and scalable
 - **1 Purchase Per User Per Day** — enforced atomically in Redis Lua (`fs:user:{userId}:daily:{date}`)
 - **Dual Stock Decrement** — purchase decrements both `flash_sale_product.sale_available` and `inventory.available_stock`
-- **401 Unauthorized** — custom AuthenticationEntryPoint returns JSON 401 for unauthenticated requests
 
 ## Architecture
 
@@ -20,14 +38,13 @@ Client (JWT)
   │
   ▼
 ┌─────────────────────────────────────────────────┐
+│ flash-sale-api (port 8080)                      │
+│                                                 │
 │ GET /items  (public)                            │
 │ Redis GET "fs:active:items" + live stock        │
 │ ⚡ Zero DB queries                              │
-└─────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────┐
-│ POST /purchase  (JWT required)                  │
 │                                                 │
+│ POST /purchase  (JWT required)                  │
 │ Redis Lua Script (atomic, single-threaded):     │
 │   1. Check sale time window                     │
 │   2. Check user daily limit (1/day)             │
@@ -46,10 +63,20 @@ Client (JWT)
 └─────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────┐
-│ Background Job (@Scheduled, every 30s)          │
-│ DB query → serialize → Redis "fs:active:items"  │
-│ TTL 60s (auto-expire if job dies)               │
+│ flash-sale-worker (no web server)               │
+│                                                 │
+│ @Scheduled every 30s:                           │
+│   DB query → serialize → Redis "fs:active:items"│
+│   TTL 60s (auto-expire if worker dies)          │
+│                                                 │
+│ API fallback: if cache miss, API calls          │
+│ refreshCache() directly (no downtime)           │
 └─────────────────────────────────────────────────┘
+
+┌──────────┐       ┌──────────┐
+│  MySQL   │       │  Redis   │
+│  (3306)  │       │  (6379)  │
+└──────────┘       └──────────┘
 ```
 
 ## Quick Start
@@ -62,8 +89,9 @@ docker compose up --build
 
 | Service    | URL                                                   |
 |------------|-------------------------------------------------------|
-| App        | http://localhost:8080                                  |
+| API        | http://localhost:8080                                  |
 | Swagger UI | http://localhost:8080/swagger-ui/index.html            |
+| Worker     | no HTTP — logs only                                   |
 | MySQL      | localhost:3306 (root/root123, db: flash_sale)         |
 | Redis      | localhost:6379                                         |
 
@@ -130,8 +158,8 @@ Response:
     "originalPrice": 1499.99,
     "salePrice": 1299.99,
     "flashSaleName": "Morning Rush: Smartphones & Laptops",
-    "startTime": "2026-02-14T07:00:00",
-    "endTime": "2026-02-14T09:00:00",
+    "startTime": "2026-02-15T07:00:00",
+    "endTime": "2026-02-15T09:00:00",
     "availableStock": 300
   }]
 }
@@ -143,7 +171,7 @@ curl -s -X POST http://localhost:8080/api/v1/flash-sale/purchase \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -d '{"flashSaleProductId": 1}' | jq .
-# Returns: { "data": { "orderNo": "FS-20260214-1-1-A1B2C3D4" } }
+# Returns: { "data": { "orderNo": "FS-20260215-1-1-A1B2C3D4" } }
 ```
 
 **Purchase errors:**
@@ -183,3 +211,4 @@ inventory              orders ──(N:1)── users
 - Redis 7 + Lua scripting
 - OpenAPI/Swagger UI (springdoc 2.8.4)
 - Docker Compose (multi-stage build, ZGC)
+- Multi-module Maven (common, api, worker)
