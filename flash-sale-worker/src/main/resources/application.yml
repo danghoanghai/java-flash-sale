@@ -1,0 +1,40 @@
+spring:
+  application:
+    name: flash-sale-worker
+  main:
+    web-application-type: none
+
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DB:flash_sale}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:root123}
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 2
+      connection-timeout: 5000
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+
+  sql:
+    init:
+      mode: never
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 3000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 4
+          min-idle: 2
+
+logging:
+  level:
+    com.flashsale: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"

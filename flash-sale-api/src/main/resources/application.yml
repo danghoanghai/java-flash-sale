@@ -1,0 +1,61 @@
+server:
+  port: 8080
+  tomcat:
+    threads:
+      max: 400
+      min-spare: 50
+    accept-count: 200
+
+spring:
+  application:
+    name: flash-sale-system
+
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DB:flash_sale}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:root123}
+    hikari:
+      maximum-pool-size: 30
+      minimum-idle: 10
+      connection-timeout: 5000
+      idle-timeout: 300000
+      max-lifetime: 900000
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 50
+        order_inserts: true
+        order_updates: true
+
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 3000ms
+      lettuce:
+        pool:
+          max-active: 200
+          max-idle: 32
+          min-idle: 8
+          max-wait: 2000ms
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:c2VjdXJlLWZsYXNoLXNhbGUtand0LXNlY3JldC1rZXktMjAyNi1taW5pbXVtLTI1Ni1iaXRz}
+    expiration-hours: ${JWT_EXPIRATION_HOURS:24}
+
+logging:
+  level:
+    com.flashsale: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
